@@ -10,8 +10,14 @@
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
   </head>
-  <body>
-    <div id="root"></div>
+  <body style="background-color: #020611; margin: 0; color: #f8fafc; font-family: system-ui, -apple-system, sans-serif;">
+    <div id="root">
+      <div style="display: flex; height: 100vh; width: 100vw; flex-direction: column; align-items: center; justify-content: center; background-color: #020611; color: #38bdf8; font-family: monospace; font-size: 13px; letter-spacing: 0.1em;">
+        <div style="width: 32px; height: 32px; border: 2px solid #0e7490; border-top-color: #22d3ee; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 16px;"></div>
+        LOADING STARLINK 3D CONSTELLATION...
+        <style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
