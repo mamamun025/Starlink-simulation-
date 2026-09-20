@@ -1,0 +1,6 @@
+{
+  "name": "Starlink 3D Satellite Constellation Animation",
+  "description": "A pure 3D animation visually demonstrating how Starlink satellites, phased array ground terminals, space laser interlinks, and ground gateways transmit data.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

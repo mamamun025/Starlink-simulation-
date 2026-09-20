@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Starlink 3D WebGL Cinematic Animation</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #02050c; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    canvas { width: 100vw; height: 100vh; display: block; cursor: grab; }
+    canvas:active { cursor: grabbing; }
+
+    .step-bar-container {
+      position: fixed;
+      top: 16px;
+      left: 0;
+      right: 0;
+      display: flex;
+      justify-content: center;
+      padding: 0 12px;
+      pointer-events: none;
+      z-index: 50;
+    }
+
+    .step-bar {
+      pointer-events: auto;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 16px;
+      border-radius: 9999px;
+      background: rgba(2, 6, 23, 0.88);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(51, 65, 85, 0.8);
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.7);
+      color: #e2e8f0;
+      font-size: 13px;
+      white-space: nowrap;
+      user-select: none;
+    }
+
+    .step-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #22d3ee;
+      box-shadow: 0 0 8px #22d3ee;
+      flex-shrink: 0;
+    }
+
+    .step-badge {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: rgba(8, 51, 68, 0.8);
+      color: #67e8f9;
+      border: 1px solid rgba(21, 94, 117, 0.6);
+      flex-shrink: 0;
+    }
+
+    .step-title {
+      font-weight: 600;
+      color: #f8fafc;
+    }
+
+    .step-detail {
+      color: #94a3b8;
+      font-size: 12px;
+    }
+
+    .nav-btn {
+      background: none;
+      border: none;
+      color: #94a3b8;
+      cursor: pointer;
+      padding: 2px 6px;
+      border-radius: 9999px;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: color 0.2s, background 0.2s;
+    }
+    .nav-btn:hover {
+      color: #ffffff;
+      background: rgba(51, 65, 85, 0.6);
+    }
+
+    .step-nums {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding-left: 8px;
+      border-left: 1px solid rgba(51, 65, 85, 0.8);
+      margin-left: 4px;
+    }
+
+    .step-num-btn {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      border: none;
+      background: none;
+      color: #94a3b8;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+    .step-num-btn.active {
+      background: #ffffff;
+      color: #020617;
+      font-weight: 700;
+      transform: scale(1.08);
+    }
+    .step-num-btn:hover:not(.active) {
+      color: #f1f5f9;
+      background: rgba(51, 65, 85, 0.5);
+    }
+  </style>
+
+  <!-- Three.js r128, OrbitControls, Postprocessing, and GSAP -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+</head>
+<body>
+<div id="container"></div>
+
+<!-- Single Line Step Indicator -->
+<div class="step-bar-container">
+  <div class="step-bar" id="step-bar">
+    <button class="nav-btn" id="play-pause-btn" aria-label="Pause or Resume step" title="Pause / Play (Space)" style="font-size: 11px;">&#10074;&#10074;</button>
+    <button class="nav-btn" id="prev-btn" aria-label="Previous step" title="Previous step (Left Arrow)">&#9664;</button>
+    <div class="step-dot" id="step-dot"></div>
+    <span class="step-badge" id="step-badge">Step 1 of 4</span>
+    <span class="step-title" id="step-title">Phased-Array Uplink</span>
+    <span class="step-detail" id="step-detail">(User Terminal &rarr; Satellite)</span>
+    <div class="step-nums">
+      <button class="step-num-btn active" data-step="1">1</button>
+      <button class="step-num-btn" data-step="2">2</button>
+      <button class="step-num-btn" data-step="3">3</button>
+      <button class="step-num-btn" data-step="4">4</button>
+    </div>
+    <button class="nav-btn" id="next-btn" aria-label="Next step" title="Next step (Right Arrow)">&#9654;</button>
+    <button id="speed-btn" class="nav-btn" style="width: auto; padding: 2px 8px; border-radius: 999px; font-size: 10px; color: #cbd5e1; border: 1px solid rgba(71, 85, 105, 0.6); background: rgba(15, 23, 42, 0.6); margin-left: 2px; font-family: monospace;" title="Click to cycle speed: 1x -> 0.5x Slow -> 0.25x Super Slow -> 2x">1.0x</button>
+    <button id="loop-btn" class="nav-btn" style="width: auto; padding: 2px 8px; border-radius: 999px; font-size: 10px; color: #94a3b8; border: 1px solid rgba(71, 85, 105, 0.6); background: rgba(15, 23, 42, 0.6); margin-left: 2px;" title="Loop and stay on current step">Loop Step</button>
+    <button id="markers-toggle-btn" class="nav-btn" style="width: auto; padding: 2px 8px; border-radius: 999px; font-size: 10px; color: #22d3ee; border: 1px solid rgba(6, 182, 212, 0.5); background: rgba(8, 51, 68, 0.6); margin-left: 4px;">Markers ON</button>
+  </div>
+</div>
+
+<!-- 3D Tracking Markers Overlay -->
+<div id="markers-overlay" style="position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 25;"></div>
+
+<script>
+(function() {
+  const EARTH_RADIUS = 100;
+  const LEO_ORBIT_RADIUS = 109;
+
+  // Scene, Camera, Renderer
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x02050c);
+
+  const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.5, 2000);
+  camera.position.set(0, 120, 240);
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 0.92;
+  renderer.shadowMap.enabled = true;
+  document.getElementById('container').appendChild(renderer.domElement);
+
+  // Postprocessing (Balanced, Non-Blinding UnrealBloomPass)
+  const composer = new THREE.EffectComposer(renderer);
+  composer.addPass(new THREE.RenderPass(scene, camera));
+  const bloomPass = new THREE.UnrealBloomPass(
+    new THREE.Vector2(window.innerWidth, window.innerHeight),
+    0.38, 0.22, 0.88
+  );
+  composer.addPass(bloomPass);
+
+  // OrbitControls
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.05;
+  controls.rotateSpeed = 0.8;
+  controls.zoomSpeed = 1.0;
+  controls.minDistance = 5.0;
+  controls.maxDistance = 550.0;
+
+  let isUserInteracting = false;
+  let interactionTimeout = null;
+  controls.addEventListener('start', () => {
+    isUserInteracting = true;
+    if (interactionTimeout) clearTimeout(interactionTimeout);
+  });
+  controls.addEventListener('end', () => {
+    if (interactionTimeout) clearTimeout(interactionTimeout);
+    interactionTimeout = setTimeout(() => { isUserInteracting = false; }, 2500);
+  });
+
+  // Lighting
+  const sunLight = new THREE.DirectionalLight(0xffffff, 1.15);
+  sunLight.position.set(280, 110, 180);
+  scene.add(sunLight);
+  scene.add(new THREE.AmbientLight(0x060e1d, 0.08));
+  const rimFill = new THREE.DirectionalLight(0x1e3a8a, 0.12);
+  rimFill.position.set(-200, -80, -120);
+  scene.add(rimFill);
+
+  // Starfield
+  const starGeo = new THREE.BufferGeometry();
+  const starPositions = new Float32Array(3500 * 3);
+  const starColors = new Float32Array(3500 * 3);
+  for (let i = 0; i < 3500; i++) {
+    const d = 600 + Math.random() * 800;
+    const th = Math.random() * Math.PI * 2;
+    const ph = Math.acos(Math.random() * 2 - 1);
+    starPositions[i*3] = d * Math.sin(ph) * Math.cos(th);
+    starPositions[i*3+1] = d * Math.sin(ph) * Math.sin(th);
+    starPositions[i*3+2] = d * Math.cos(ph);
+    const b = 0.6 + Math.random() * 0.3;
+    starColors[i*3] = b; starColors[i*3+1] = b; starColors[i*3+2] = b;
+  }
+  starGeo.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
+  starGeo.setAttribute('color', new THREE.BufferAttribute(starColors, 3));
+  scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ size: 1.2, vertexColors: true, transparent: true, opacity: 0.75 })));
+
+  // Earth Texture Loader & Authentic NASA Maps
+  const texLoader = new THREE.TextureLoader();
+  const earthDayTex = texLoader.load('/textures/earth_day_2048.jpg');
+  const earthSpecularTex = texLoader.load('/textures/earth_specular_2048.jpg');
+  const earthLightsTex = texLoader.load('/textures/earth_lights_2048.png');
+  const earthCloudsTex = texLoader.load('/textures/earth_clouds_1024.png');
+
+  // Earth Mesh with Authentic NASA Blue Marble & Specular Ocean Glint
+  const earthGroup = new THREE.Group();
+  scene.add(earthGroup);
+  const earthMesh = new THREE.Mesh(
+    new THREE.SphereGeometry(EARTH_RADIUS, 64, 64),
+    new THREE.MeshPhongMaterial({
+      map: earthDayTex,
+      specularMap: earthSpecularTex,
+      specular: new THREE.Color(0x2d4460),
+      shininess: 24
+    })
+  );
+  earthGroup.add(earthMesh);
+
+  // Earth Night City Lights Layer (NASA Black Marble on dark side of globe)
+  const sunDir = new THREE.Vector3(280, 110, 180).normalize();
+  const nightMesh = new THREE.Mesh(
+    new THREE.SphereGeometry(EARTH_RADIUS + 0.12, 64, 64),
+    new THREE.ShaderMaterial({
+      uniforms: {
+        nightTex: { value: earthLightsTex },
+        sunDirection: { value: sunDir }
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        varying vec3 vNormal;
+        void main() {
+          vUv = uv;
+          vNormal = normalize((modelMatrix * vec4(normal, 0.0)).xyz);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform sampler2D nightTex;
+        uniform vec3 sunDirection;
+        varying vec2 vUv;
+        varying vec3 vNormal;
+        void main() {
+          float sunDot = dot(vNormal, sunDirection);
+          float nightIntensity = smoothstep(0.1, -0.2, sunDot);
+          vec4 lights = texture2D(nightTex, vUv);
+          gl_FragColor = vec4(lights.rgb * 1.5, lights.r * nightIntensity * 0.85);
+        }
+      `,
+      blending: THREE.AdditiveBlending,
+      transparent: true,
+      depthWrite: false
+    })
+  );
+  earthMesh.add(nightMesh);
+
+  // Clouds Sphere
+  const cloudsMesh = new THREE.Mesh(
+    new THREE.SphereGeometry(EARTH_RADIUS + 0.5, 48, 48),
+    new THREE.MeshPhongMaterial({
+      map: earthCloudsTex,
+      transparent: true,
+      opacity: 0.38,
+      blending: THREE.NormalBlending,
+      depthWrite: false
+    })
+  );
+  earthGroup.add(cloudsMesh);
+
+  // Delicate, Subtle Atmosphere Rim
+  const atmoMesh = new THREE.Mesh(
+    new THREE.SphereGeometry(EARTH_RADIUS + 1.8, 48, 48),
+    new THREE.ShaderMaterial({
+      vertexShader: `
+        varying vec3 vNormal, vPosition;
+        void main() {
+          vNormal = normalize(normalMatrix * normal);
+          vPosition = (modelViewMatrix * vec4(position, 1.0)).xyz;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        varying vec3 vNormal, vPosition;
+        void main() {
+          vec3 viewDir = normalize(-vPosition);
+          float intensity = pow(1.0 - max(dot(vNormal, viewDir), 0.0), 3.8);
+          gl_FragColor = vec4(vec3(0.15, 0.55, 1.0), intensity * 0.45);
+        }
+      `,
+      blending: THREE.AdditiveBlending,
+      side: THREE.BackSide,
+      transparent: true,
+      depthWrite: false
+    })
+  );
+  earthGroup.add(atmoMesh);
+
+  function latLonToVector3(lat, lon, r) {
+    const phi = (90 - lat) * (Math.PI / 180);
+    const theta = (lon + 180) * (Math.PI / 180);
+    return new THREE.Vector3(
+      -(r * Math.sin(phi) * Math.cos(theta)),
+      r * Math.cos(phi),
+      r * Math.sin(phi) * Math.sin(theta)
+    );
+  }
+
+  // User Terminal
+  const userLat = 39.5, userLon = -105.0;
+  const userPos = latLonToVector3(userLat, userLon, EARTH_RADIUS);
+  const dishRoot = new THREE.Group();
+  dishRoot.position.copy(userPos);
+  dishRoot.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), userPos.clone().normalize());
+  earthMesh.add(dishRoot);
+
+  const cabin = new THREE.Mesh(new THREE.BoxGeometry(2, 1, 1.6), new THREE.MeshStandardMaterial({ color: 0x47392b }));
+  cabin.position.y = 0.5; dishRoot.add(cabin);
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(1.6, 0.7, 4), new THREE.MeshStandardMaterial({ color: 0x1e293b }));
+  roof.rotation.y = Math.PI / 4; roof.position.y = 1.35; dishRoot.add(roof);
+
+  const dishAimHead = new THREE.Group();
+  dishAimHead.position.set(0, 2.3, 0);
+  dishRoot.add(dishAimHead);
+  const dishFace = new THREE.Mesh(new THREE.CylinderGeometry(0.72, 0.72, 0.08, 32), new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.35 }));
+  dishAimHead.add(dishFace);
+  const dishRing = new THREE.Mesh(new THREE.RingGeometry(0.7, 0.76, 32), new THREE.MeshBasicMaterial({ color: 0x00d2ff, side: THREE.DoubleSide, transparent: true, opacity: 0.6 }));
+  dishRing.rotation.x = Math.PI / 2; dishRing.position.y = 0.05; dishAimHead.add(dishRing);
+
+  // Ground Gateway
+  const gwLat = 33.5, gwLon = -112.0;
+  const gwPos = latLonToVector3(gwLat, gwLon, EARTH_RADIUS);
+  const gwRoot = new THREE.Group();
+  gwRoot.position.copy(gwPos);
+  gwRoot.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), gwPos.clone().normalize());
+  earthMesh.add(gwRoot);
+
+  const pad = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.4, 0.3, 32), new THREE.MeshStandardMaterial({ color: 0x334155 }));
+  pad.position.y = 0.15; gwRoot.add(pad);
+  [-0.9, 0.9].forEach(x => [-0.9, 0.9].forEach(z => {
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(0.65, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0xf8fafc }));
+    dome.position.set(x, 0.3, z); gwRoot.add(dome);
+  }));
+  const gwRing = new THREE.Mesh(new THREE.RingGeometry(2.2, 2.5, 32), new THREE.MeshBasicMaterial({ color: 0xf59e0b, side: THREE.DoubleSide, transparent: true, opacity: 0.35 }));
+  gwRing.rotation.x = -Math.PI / 2; gwRing.position.y = 0.05; gwRoot.add(gwRing);
+
+  // Radiating Fiber lines
+  const hubs = [{ lat: 32.8, lon: -97.0 }, { lat: 34.0, lon: -118.2 }, { lat: 37.7, lon: -122.4 }];
+  hubs.forEach(h => {
+    const hp = latLonToVector3(h.lat, h.lon, EARTH_RADIUS);
+    const pts = [];
+    for (let i = 0; i <= 30; i++) {
+      pts.push(new THREE.Vector3().lerpVectors(gwPos, hp, i / 30).normalize().multiplyScalar(EARTH_RADIUS + 0.12));
+    }
+    const crv = new THREE.CatmullRomCurve3(pts);
+    earthMesh.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(crv.getPoints(50)), new THREE.LineBasicMaterial({ color: 0xf59e0b, transparent: true, opacity: 0.5 })));
+  });
+
+  // Constellation
+  const satellites = [];
+  const satGroup = new THREE.Group();
+  scene.add(satGroup);
+  const numPlanes = 5, satsPerPlane = 8;
+  const inclination = 53 * (Math.PI / 180);
+
+  for (let p = 0; p < numPlanes; p++) {
+    const raan = (p / numPlanes) * Math.PI * 2;
+    const orbitCurve = new THREE.EllipseCurve(0, 0, LEO_ORBIT_RADIUS, LEO_ORBIT_RADIUS, 0, Math.PI * 2);
+    const pts = orbitCurve.getPoints(90).map(pt => new THREE.Vector3(pt.x, 0, pt.y));
+    const oLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.15 }));
+    oLine.rotation.z = inclination; oLine.rotation.y = raan;
+    satGroup.add(oLine);
+
+    for (let s = 0; s < satsPerPlane; s++) {
+      const sGroup = new THREE.Group();
+      const bus = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.25, 1.2), new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.7 }));
+      sGroup.add(bus);
+      const wing = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 6.0), new THREE.MeshStandardMaterial({ color: 0x071529, metalness: 0.8, side: THREE.DoubleSide }));
+      wing.rotation.x = Math.PI / 2; wing.position.z = 3.6; sGroup.add(wing);
+      const core = new THREE.Mesh(new THREE.OctahedronGeometry(0.25, 1), new THREE.MeshStandardMaterial({ color: 0x00d2ff, emissive: 0x00d2ff, emissiveIntensity: 0.4 }));
+      core.position.y = 0.22; sGroup.add(core);
+
+      sGroup.scale.set(0.65, 0.65, 0.65);
+      satGroup.add(sGroup);
+      satellites.push({
+        group: sGroup, core,
+        planeIndex: p, sIndex: s,
+        angle: (s / satsPerPlane) * Math.PI * 2 + (p * 0.4),
+        raan, speed: 0.08
+      });
+    }
+  }
+
+  // Beams (Subtle Translucent Cones)
+  const beamsGroup = new THREE.Group();
+  scene.add(beamsGroup);
+  const coneGeo = new THREE.CylinderGeometry(0.2, 2.2, 1, 24, 1, true);
+  coneGeo.translate(0, 0.5, 0); coneGeo.rotateX(Math.PI / 2);
+
+  const uplinkCone = new THREE.Mesh(coneGeo, new THREE.MeshBasicMaterial({ color: 0x00d2ff, transparent: true, opacity: 0.09, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, depthWrite: false }));
+  beamsGroup.add(uplinkCone);
+  const downlinkCone = new THREE.Mesh(coneGeo.clone(), new THREE.MeshBasicMaterial({ color: 0xf59e0b, transparent: true, opacity: 0.09, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, depthWrite: false }));
+  beamsGroup.add(downlinkCone);
+
+  const laserMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 1, 16, 1, true), new THREE.MeshBasicMaterial({ color: 0x10b981, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false }));
+  laserMesh.geometry.translate(0, 0.5, 0); laserMesh.geometry.rotateX(Math.PI / 2);
+  beamsGroup.add(laserMesh);
+
+  // GSAP 4-Phase Cinematic Timeline
+  const cinematic = { phase: 1, transponderGlow: 0.1, fov: 42 };
+  const masterTimeline = gsap.timeline({ repeat: -1, defaults: { ease: 'power2.inOut' } })
+    .to(cinematic, { duration: 9.0, phase: 1, transponderGlow: 0.1, fov: 42 })
+    .to(cinematic, { duration: 2.0, phase: 2, transponderGlow: 0.5, fov: 44 })
+    .to(cinematic, { duration: 7.0, transponderGlow: 0.25 })
+    .to(cinematic, { duration: 9.0, phase: 3, transponderGlow: 0.1, fov: 46 })
+    .to(cinematic, { duration: 9.0, phase: 4, transponderGlow: 0.15, fov: 48 });
+
+  // Step UI updates
+  const stepInfoList = [
+    { step: 1, title: 'Phased-Array Uplink', detail: '(User Terminal \u2192 Satellite)', dot: '#22d3ee', badgeBg: 'rgba(8, 51, 68, 0.8)', badgeColor: '#67e8f9' },
+    { step: 2, title: 'Space Laser Routing', detail: '(Inter-Satellite Optical Mesh)', dot: '#34d399', badgeBg: 'rgba(6, 78, 59, 0.8)', badgeColor: '#6ee7b7' },
+    { step: 3, title: 'Gateway Downlink & Fiber', detail: '(Satellite \u2192 Ground Radomes)', dot: '#fbbf24', badgeBg: 'rgba(120, 53, 15, 0.8)', badgeColor: '#fde68a' },
+    { step: 4, title: 'Beam Handover & Loop', detail: '(Seamless Constellation Handshake)', dot: '#38bdf8', badgeBg: 'rgba(12, 74, 110, 0.8)', badgeColor: '#bae6fd' }
+  ];
+
+  let currentUIPhase = 1;
+  const stepDot = document.getElementById('step-dot');
+  const stepBadge = document.getElementById('step-badge');
+  const stepTitle = document.getElementById('step-title');
+  const stepDetail = document.getElementById('step-detail');
+  const numBtns = document.querySelectorAll('.step-num-btn');
+
+  function updateStepUI(p) {
+    if (p === currentUIPhase) return;
+    currentUIPhase = p;
+    const info = stepInfoList[p - 1];
+    stepBadge.textContent = 'Step ' + info.step + ' of 4';
+    stepBadge.style.background = info.badgeBg;
+    stepBadge.style.color = info.badgeColor;
+    stepTitle.textContent = info.title;
+    stepDetail.textContent = info.detail;
+    stepDot.style.background = info.dot;
+    stepDot.style.boxShadow = '0 0 8px ' + info.dot;
+    numBtns.forEach(b => {
+      b.classList.toggle('active', parseInt(b.dataset.step) === p);
+    });
+  }
+
+  let isPaused = false;
+  let playbackSpeed = 1.0;
+  let loopStep = false;
+  const speedOptions = [1.0, 0.5, 0.25, 2.0];
+
+  const playPauseBtn = document.getElementById('play-pause-btn');
+  const speedBtn = document.getElementById('speed-btn');
+  const loopBtn = document.getElementById('loop-btn');
+
+  function setPaused(paused) {
+    isPaused = paused;
+    if (isPaused) {
+      masterTimeline.pause();
+      playPauseBtn.innerHTML = '&#9654;';
+      playPauseBtn.style.background = '#fbbf24';
+      playPauseBtn.style.color = '#020617';
+      playPauseBtn.style.boxShadow = '0 0 10px rgba(251,191,36,0.6)';
+      stepBadge.textContent = 'Paused';
+    } else {
+      masterTimeline.play();
+      playPauseBtn.innerHTML = '&#10074;&#10074;';
+      playPauseBtn.style.background = '';
+      playPauseBtn.style.color = '';
+      playPauseBtn.style.boxShadow = '';
+      const info = stepInfoList[currentUIPhase - 1];
+      stepBadge.textContent = 'Step ' + info.step + ' of 4';
+    }
+  }
+
+  playPauseBtn.addEventListener('click', () => setPaused(!isPaused));
+
+  speedBtn.addEventListener('click', () => {
+    const idx = speedOptions.indexOf(playbackSpeed);
+    playbackSpeed = speedOptions[(idx + 1) % speedOptions.length];
+    masterTimeline.timeScale(playbackSpeed);
+    speedBtn.textContent = playbackSpeed + 'x';
+    if (playbackSpeed < 1.0) {
+      speedBtn.style.color = '#fcd34d';
+      speedBtn.style.borderColor = 'rgba(245, 158, 11, 0.7)';
+      speedBtn.style.background = 'rgba(120, 53, 15, 0.6)';
+    } else if (playbackSpeed > 1.0) {
+      speedBtn.style.color = '#c084fc';
+      speedBtn.style.borderColor = 'rgba(168, 85, 247, 0.7)';
+      speedBtn.style.background = 'rgba(88, 28, 135, 0.6)';
+    } else {
+      speedBtn.style.color = '#cbd5e1';
+      speedBtn.style.borderColor = 'rgba(71, 85, 105, 0.6)';
+      speedBtn.style.background = 'rgba(15, 23, 42, 0.6)';
+    }
+  });
+
+  loopBtn.addEventListener('click', () => {
+    loopStep = !loopStep;
+    loopBtn.style.color = loopStep ? '#a5b4fc' : '#94a3b8';
+    loopBtn.style.borderColor = loopStep ? 'rgba(99, 102, 241, 0.7)' : 'rgba(71, 85, 105, 0.6)';
+    loopBtn.style.background = loopStep ? 'rgba(49, 46, 129, 0.6)' : 'rgba(15, 23, 42, 0.6)';
+    loopBtn.textContent = loopStep ? 'Looping Step' : 'Loop Step';
+  });
+
+  function jumpToStep(p) {
+    const times = [0.0, 9.0, 18.0, 27.0];
+    masterTimeline.seek(times[p - 1]);
+    if (isPaused) {
+      masterTimeline.pause();
+    } else {
+      masterTimeline.play();
+    }
+    updateStepUI(p);
+  }
+
+  document.getElementById('prev-btn').addEventListener('click', () => {
+    jumpToStep(currentUIPhase <= 1 ? 4 : currentUIPhase - 1);
+  });
+  document.getElementById('next-btn').addEventListener('click', () => {
+    jumpToStep(currentUIPhase >= 4 ? 1 : currentUIPhase + 1);
+  });
+  numBtns.forEach(b => {
+    b.addEventListener('click', () => jumpToStep(parseInt(b.dataset.step)));
+  });
+
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'Space') {
+      e.preventDefault();
+      setPaused(!isPaused);
+    } else if (e.code === 'ArrowLeft') {
+      e.preventDefault();
+      jumpToStep(currentUIPhase <= 1 ? 4 : currentUIPhase - 1);
+    } else if (e.code === 'ArrowRight') {
+      e.preventDefault();
+      jumpToStep(currentUIPhase >= 4 ? 1 : currentUIPhase + 1);
+    } else if (e.key === '[' || e.key === '-') {
+      playbackSpeed = playbackSpeed === 2.0 ? 1.0 : playbackSpeed === 1.0 ? 0.5 : 0.25;
+      masterTimeline.timeScale(playbackSpeed);
+      speedBtn.textContent = playbackSpeed + 'x';
+    } else if (e.key === ']' || e.key === '=' || e.key === '+') {
+      playbackSpeed = playbackSpeed === 0.25 ? 0.5 : playbackSpeed === 0.5 ? 1.0 : 2.0;
+      masterTimeline.timeScale(playbackSpeed);
+      speedBtn.textContent = playbackSpeed + 'x';
+    } else if (e.key >= '1' && e.key <= '4') {
+      jumpToStep(parseInt(e.key));
+    }
+  });
+
+  function orientMesh(m, from, to, r) {
+    const d = to.clone().sub(from);
+    m.position.copy(from);
+    m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), d.clone().normalize());
+    m.scale.set(r, r, d.length());
+  }
+
+  // Animation Loop
+  let lastTime = performance.now();
+  let simTime = 0;
+  function loop() {
+    requestAnimationFrame(loop);
+    const now = performance.now();
+    const rawDelta = Math.min((now - lastTime) * 0.001, 0.1);
+    lastTime = now;
+    const delta = isPaused ? 0 : rawDelta * playbackSpeed;
+    simTime += delta;
+
+    if (loopStep && masterTimeline) {
+      const t = masterTimeline.time();
+      const curStep = Math.min(4, Math.floor((t % 36.0) / 9.0) + 1);
+      const stepStart = (curStep - 1) * 9.0;
+      const stepEnd = curStep * 9.0;
+      if ((t % 36.0) >= stepEnd - 0.08) {
+        masterTimeline.seek(stepStart);
+      }
+    }
+
+    earthMesh.rotation.y += delta * 0.01;
+    cloudsMesh.rotation.y += delta * 0.013;
+
+    // Track active timeline phase
+    const t = masterTimeline.time() % 36.0;
+    const curP = t < 9.0 ? 1 : t < 18.0 ? 2 : t < 27.0 ? 3 : 4;
+    updateStepUI(curP);
+
+    const uWorld = new THREE.Vector3(); dishRoot.getWorldPosition(uWorld);
+    const gWorld = new THREE.Vector3(); gwRoot.getWorldPosition(gWorld);
+
+    let activeSat = null, gwSat = null, minUDist = Infinity, minGDist = Infinity;
+    satellites.forEach(s => {
+      s.angle += delta * s.speed;
+      const unrot = new THREE.Vector3(LEO_ORBIT_RADIUS * Math.cos(s.angle), 0, LEO_ORBIT_RADIUS * Math.sin(s.angle));
+      unrot.applyAxisAngle(new THREE.Vector3(0, 0, 1), inclination);
+      unrot.applyAxisAngle(new THREE.Vector3(0, 1, 0), s.raan);
+      s.group.position.copy(unrot);
+
+      const dU = s.group.position.distanceTo(uWorld);
+      if (dU < minUDist) { minUDist = dU; activeSat = s; }
+      const dG = s.group.position.distanceTo(gWorld);
+      if (dG < minGDist && s !== activeSat) { minGDist = dG; gwSat = s; }
+    });
+
+    if (activeSat) {
+      orientMesh(uplinkCone, uWorld, activeSat.group.position, 2.0);
+      if (gwSat) {
+        orientMesh(laserMesh, activeSat.group.position, gwSat.group.position, 0.05);
+        orientMesh(downlinkCone, gwSat.group.position, gWorld, 2.0);
+      }
+    }
+
+    // Comfortable, cinematic camera perspectives (never inside beam)
+    let targetCam = new THREE.Vector3(), targetLook = new THREE.Vector3();
+    if (cinematic.phase === 1) {
+      const uNorm = uWorld.clone().normalize();
+      targetCam = uWorld.clone().add(uNorm.clone().multiplyScalar(13)).add(new THREE.Vector3(16, 8, 12));
+      targetLook = uWorld.clone().add(uNorm.clone().multiplyScalar(2.5));
+    } else if (cinematic.phase === 2 && activeSat) {
+      targetCam = activeSat.group.position.clone().add(new THREE.Vector3(14, 18, 14));
+      targetLook = gwSat ? activeSat.group.position.clone().lerp(gwSat.group.position, 0.25) : activeSat.group.position;
+    } else if (cinematic.phase === 3) {
+      const gNorm = gWorld.clone().normalize();
+      targetCam = gWorld.clone().add(gNorm.clone().multiplyScalar(55)).add(new THREE.Vector3(38, 25, 30));
+      targetLook = gWorld.clone().add(gNorm.clone().multiplyScalar(2.0));
+    } else {
+      const a = time * 0.22;
+      targetCam.set(Math.cos(a) * 240, 100 + Math.sin(time * 0.25) * 30, Math.sin(a) * 240);
+      targetLook.set(0, 15, 0);
+    }
+
+    if (!isUserInteracting) {
+      camera.position.lerp(targetCam, 0.045);
+      controls.target.lerp(targetLook, 0.05);
+      camera.fov = THREE.MathUtils.lerp(camera.fov, cinematic.fov, 0.05);
+      camera.updateProjectionMatrix();
+      controls.update();
+    } else {
+      controls.update();
+    }
+
+    // Dynamic 3D Tracking Markers Update
+    if (showMarkers) {
+      update3DMarkers({
+        userTerminal: uWorld,
+        activeSat: activeSat ? activeSat.group.position : null,
+        laserLink: (activeSat && gwSat) ? activeSat.group.position.clone().lerp(gwSat.group.position, 0.5) : null,
+        relaySat: gwSat ? gwSat.group.position : null,
+        groundGateway: gWorld
+      });
+    }
+
+    composer.render();
+  }
+
+  // 3D Markers Overlay System
+  let showMarkers = true;
+  const markersContainer = document.getElementById('markers-overlay');
+  const markersBtn = document.getElementById('markers-toggle-btn');
+  if (markersBtn) {
+    markersBtn.addEventListener('click', () => {
+      showMarkers = !showMarkers;
+      markersContainer.style.display = showMarkers ? 'block' : 'none';
+      markersBtn.innerText = showMarkers ? 'Markers ON' : 'Markers OFF';
+      markersBtn.style.color = showMarkers ? '#22d3ee' : '#94a3b8';
+    });
+  }
+
+  const markerConfigs = [
+    { id: 'userTerminal', label: 'User Terminal (Dishy)', tag: 'Phased-Array', detail: 'Colorado Rockies (39.5°N)', color: '#00e5ff', ox: 30, oy: -36 },
+    { id: 'activeSat', label: 'Starlink Sat (Active)', tag: 'LEO 550km', detail: 'Ku/Ka Phased Array', color: '#38bdf8', ox: 32, oy: -40 },
+    { id: 'laserLink', label: 'Space Laser Link (ISL)', tag: 'Optical Mesh', detail: '100 Gbps Crosslink', color: '#10b981', ox: 28, oy: -38 },
+    { id: 'relaySat', label: 'Starlink Sat (Relay)', tag: 'Laser Node', detail: 'Downlink Feeder', color: '#34d399', ox: 30, oy: -36 },
+    { id: 'groundGateway', label: 'Ground Gateway', tag: 'Ka Radomes', detail: 'Phoenix Teleport (33.5°N)', color: '#f59e0b', ox: 32, oy: -38 }
+  ];
+
+  const markerDoms = {};
+  markerConfigs.forEach(cfg => {
+    const el = document.createElement('div');
+    el.style.cssText = 'position:absolute;top:0;left:0;display:none;will-change:transform;pointer-events:auto;';
+    el.innerHTML = `
+      <div style="position:relative;">
+        <div style="position:absolute;left:-6px;top:-6px;width:12px;height:12px;border-radius:50%;border:1.5px solid ${cfg.color};background:rgba(2,6,23,0.85);display:flex;align-items:center;justify-content:center;box-shadow:0 0 8px ${cfg.color}66;">
+          <div style="width:4px;height:4px;border-radius:50%;background:${cfg.color};"></div>
+        </div>
+        <svg style="position:absolute;left:0;top:0;width:70px;height:70px;pointer-events:none;overflow:visible;">
+          <polyline points="0,0 ${cfg.ox * 0.4},${cfg.oy * 0.6} ${cfg.ox},${cfg.oy}" fill="none" stroke="${cfg.color}" stroke-width="1.2" stroke-dasharray="2,2" opacity="0.8"/>
+        </svg>
+        <div style="position:absolute;left:${cfg.ox}px;top:${cfg.oy}px;transform:translateY(-50%);padding:4px 8px;background:rgba(2,6,23,0.88);backdrop-filter:blur(6px);border:1px solid rgba(51,65,85,0.7);border-left:2.5px solid ${cfg.color};border-radius:6px;box-shadow:0 4px 15px rgba(0,0,0,0.6);white-space:nowrap;color:#f1f5f9;font-family:-apple-system,sans-serif;">
+          <div style="display:flex;align-items:center;gap:5px;">
+            <span style="font-size:11px;font-weight:700;color:#fff;">${cfg.label}</span>
+            <span style="font-size:9px;font-weight:600;padding:1px 3px;border-radius:3px;background:rgba(15,23,42,0.8);color:${cfg.color};border:0.5px solid ${cfg.color}40;">${cfg.tag}</span>
+          </div>
+          <div style="font-size:9.5px;color:#94a3b8;margin-top:1px;">${cfg.detail}</div>
+        </div>
+      </div>
+    `;
+    markersContainer.appendChild(el);
+    markerDoms[cfg.id] = el;
+  });
+
+  function update3DMarkers(positions) {
+    const w = window.innerWidth, h = window.innerHeight;
+    const camDir = new THREE.Vector3(); camera.getWorldDirection(camDir);
+    const camPos = camera.position;
+
+    Object.keys(positions).forEach(k => {
+      const pos = positions[k];
+      const el = markerDoms[k];
+      if (!el) return;
+      if (!pos) { el.style.display = 'none'; return; }
+
+      const toPos = pos.clone().sub(camPos);
+      if (toPos.dot(camDir) <= 0.1) { el.style.display = 'none'; return; }
+
+      // Horizon & Earth occlusion check
+      const d = pos.length();
+      if (d <= EARTH_RADIUS + 2) {
+        const norm = pos.clone().normalize();
+        const toC = camPos.clone().sub(pos).normalize();
+        if (norm.dot(toC) < 0.08) { el.style.display = 'none'; return; }
+      } else {
+        const rDir = pos.clone().sub(camPos).normalize();
+        const tca = -camPos.dot(rDir);
+        if (tca > 0) {
+          const d2 = camPos.lengthSq() - tca * tca;
+          const sR2 = (EARTH_RADIUS * 0.985) * (EARTH_RADIUS * 0.985);
+          if (d2 < sR2) {
+            const thc = Math.sqrt(sR2 - d2);
+            if (tca - thc < camPos.distanceTo(pos) * 0.98) { el.style.display = 'none'; return; }
+          }
+        }
+      }
+
+      const proj = pos.clone().project(camera);
+      if (proj.z > 1.0) { el.style.display = 'none'; return; }
+      const sx = (proj.x * 0.5 + 0.5) * w;
+      const sy = (-(proj.y * 0.5) + 0.5) * h;
+      if (sx < 20 || sx > w - 20 || sy < 20 || sy > h - 20) { el.style.display = 'none'; return; }
+
+      el.style.display = 'block';
+      el.style.transform = `translate3d(${sx}px, ${sy}px, 0)`;
+    });
+  }
+
+  loop();
+
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    composer.setSize(window.innerWidth, window.innerHeight);
+    bloomPass.resolution.set(window.innerWidth, window.innerHeight);
+  });
+})();
+</script>
+</body>
+</html>
